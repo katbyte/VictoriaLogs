@@ -411,6 +411,18 @@ See the docs at https://docs.victoriametrics.com/victorialogs/
      Comma-separated list of Unix socket filepaths to listen to for Syslog messages. Filepaths may be prepended with 'unixgram:'  for listening for SOCK_DGRAM sockets. By default SOCK_STREAM sockets are used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/
      Supports an array of values separated by comma or specified via multiple flags.
      Each array item can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.msgField.tcp array
+     Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.tcp. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field
+     Supports an array of values separated by comma or specified via multiple flags.
+     Each array item can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.msgField.udp array
+     Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.udp. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field
+     Supports an array of values separated by comma or specified via multiple flags.
+     Each array item can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
+  -syslog.msgField.unix array
+     Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.unix. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field
+     Supports an array of values separated by comma or specified via multiple flags.
+     Each array item can contain comma inside single-quoted or double-quoted string, {}, [] and () braces.
   -syslog.streamFields.tcp array
      Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.tcp. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields
      Supports an array of values separated by comma or specified via multiple flags.

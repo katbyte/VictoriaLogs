@@ -50,7 +50,8 @@ VictoriaLogs automatically extracts the following [log fields](https://docs.vict
 from the received Syslog lines:
 
 - [`_time`](https://docs.victoriametrics.com/victorialogs/keyconcepts/#time-field) - log timestamp. See also [log timestamps](https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#log-timestamps)
-- [`_msg`](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field) - the `MESSAGE` field from the supported syslog formats above
+- [`_msg`](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field) - the `MESSAGE` field from the supported syslog formats above.
+  It is possible to use other fields as the log message - see [these docs](https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field).
 - `hostname`, `app_name` and `proc_id` - for unique identification of [log streams](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields).
   It is possible to change the list of fields for log streams - see [these docs](https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields).
 - `level` - string representation of the log level according to the `<PRI>` field value
@@ -177,6 +178,19 @@ For example, the following command starts VictoriaLogs, which writes syslog mess
 
 See [how to configure `vlagent` for storing syslog logs for the given tenants](https://docs.victoriametrics.com/victorialogs/vlagent/#multitenancy).
 
+## Message field
+
+VictoriaLogs uses the `MESSAGE` part of the syslog line as the [`_msg` field](https://docs.victoriametrics.com/victorialogs/keyconcepts/#message-field) by default. This part is parsed into the `message` field before it is stored as `_msg`.
+It is possible to use other fields as the log message via `-syslog.msgField.tcp`{{% available_from "#" %}}, `-syslog.msgField.udp` and `-syslog.msgField.unix` command-line flags for the corresponding `-syslog.listenAddr.tcp`, `-syslog.listenAddr.udp` and `-syslog.listenAddr.unix` addresses.
+The first non-empty field from the list is stored as `_msg` instead of under its own name.
+For example, the following command starts VictoriaLogs, which uses the `msg` extension or else the name of [CEF messages](https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#cef) as the log message for logs received at UDP port 514, since CEF messages have no `MESSAGE` part of their own:
+
+```sh
+./victoria-logs -syslog.listenAddr.udp=:514 -syslog.msgField.udp='["message","cef.extension.msg","cef.name"]'
+```
+
+Include `message` in the list, otherwise the other syslog lines are stored without their own message.
+
 ## Stream fields
 
 VictoriaLogs uses `(hostname, app_name, proc_id)` fields as [log stream fields](https://docs.victoriametrics.com/victorialogs/keyconcepts/#stream-fields) by default.
@@ -203,6 +217,8 @@ VictoriaLogs automatically parses [CEF Syslog messages for SIEM](https://www.mic
 - `cef.severity` - the severity field
 
 An optional `extension` fields are parsed into `cef.extension.<key>=<value>` fields.
+
+CEF messages have no `MESSAGE` part, so they are stored without a log message by default. See [how to use their fields as the log message](https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field).
 
 ## CEE
 

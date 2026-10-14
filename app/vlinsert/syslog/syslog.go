@@ -58,6 +58,10 @@ var (
 		"Supported values: TLS10, TLS11, TLS12, TLS13. "+
 		"See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#security")
 
+	msgFieldTCP  = flagutil.NewArrayString("syslog.msgField.tcp", "Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.tcp. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field")
+	msgFieldUDP  = flagutil.NewArrayString("syslog.msgField.udp", "Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.udp. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field")
+	msgFieldUnix = flagutil.NewArrayString("syslog.msgField.unix", "Fields to use as the log message for logs ingested via the corresponding -syslog.listenAddr.unix. The first non-empty field from the list is used. See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#message-field")
+
 	streamFieldsTCP = flagutil.NewArrayString("syslog.streamFields.tcp", "Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.tcp. "+
 		`See https://docs.victoriametrics.com/victorialogs/data-ingestion/syslog/#stream-fields`)
 	streamFieldsUDP = flagutil.NewArrayString("syslog.streamFields.udp", "Fields to use as log stream labels for logs ingested via the corresponding -syslog.listenAddr.udp. "+
@@ -194,7 +198,7 @@ func MustStop() {
 }
 
 func runUnixListener(addr string, argIdx int) {
-	cfg, err := getConfigs("unix", argIdx, streamFieldsUnix, ignoreFieldsUnix, decolorizeFieldsUnix, extraFieldsUnix, tenantIDUnix, compressMethodUnix, useLocalTimestampUnix, useRemoteIPUnix)
+	cfg, err := getConfigs("unix", argIdx, msgFieldUnix, streamFieldsUnix, ignoreFieldsUnix, decolorizeFieldsUnix, extraFieldsUnix, tenantIDUnix, compressMethodUnix, useLocalTimestampUnix, useRemoteIPUnix)
 	if err != nil {
 		logger.Fatalf("cannot parse configs for -syslog.listenAddr.unix=%q: %s", addr, err)
 	}
@@ -270,7 +274,7 @@ func runUDPListener(addr string, argIdx int) {
 		logger.Fatalf("cannot start UDP syslog server at %q: %s", addr, err)
 	}
 
-	cfg, err := getConfigs("udp", argIdx, streamFieldsUDP, ignoreFieldsUDP, decolorizeFieldsUDP, extraFieldsUDP, tenantIDUDP, compressMethodUDP, useLocalTimestampUDP, useRemoteIPUDP)
+	cfg, err := getConfigs("udp", argIdx, msgFieldUDP, streamFieldsUDP, ignoreFieldsUDP, decolorizeFieldsUDP, extraFieldsUDP, tenantIDUDP, compressMethodUDP, useLocalTimestampUDP, useRemoteIPUDP)
 	if err != nil {
 		logger.Fatalf("cannot parse configs for -syslog.listenAddr.udp=%q: %s", addr, err)
 	}
@@ -307,7 +311,7 @@ func runTCPListener(addr string, argIdx int) {
 		logger.Fatalf("syslog: cannot start TCP listener at %s: %s", addr, err)
 	}
 
-	cfg, err := getConfigs("tcp", argIdx, streamFieldsTCP, ignoreFieldsTCP, decolorizeFieldsTCP, extraFieldsTCP, tenantIDTCP, compressMethodTCP, useLocalTimestampTCP, useRemoteIPTCP)
+	cfg, err := getConfigs("tcp", argIdx, msgFieldTCP, streamFieldsTCP, ignoreFieldsTCP, decolorizeFieldsTCP, extraFieldsTCP, tenantIDTCP, compressMethodTCP, useLocalTimestampTCP, useRemoteIPTCP)
 	if err != nil {
 		logger.Fatalf("cannot parse configs for -syslog.listenAddr.tcp=%q: %s", addr, err)
 	}
@@ -333,7 +337,7 @@ func servePacketListener(ln net.PacketConn, cfg *configs) {
 	localAddr := ln.LocalAddr()
 	for range gomaxprocs {
 		wg.Go(func() {
-			cp := insertutil.GetCommonParamsForSyslog(cfg.tenantID, cfg.streamFields, cfg.ignoreFields, cfg.decolorizeFields, cfg.extraFields)
+			cp := insertutil.GetCommonParamsForSyslog(cfg.tenantID, cfg.msgFields, cfg.streamFields, cfg.ignoreFields, cfg.decolorizeFields, cfg.extraFields)
 			var bb bytesutil.ByteBuffer
 			bb.B = bytesutil.ResizeNoCopyNoOverallocate(bb.B, 64*1024)
 			for {
@@ -399,7 +403,7 @@ func serveStreamListener(ln net.Listener, cfg *configs) {
 		}
 
 		wg.Go(func() {
-			cp := insertutil.GetCommonParamsForSyslog(cfg.tenantID, cfg.streamFields, cfg.ignoreFields, cfg.decolorizeFields, cfg.extraFields)
+			cp := insertutil.GetCommonParamsForSyslog(cfg.tenantID, cfg.msgFields, cfg.streamFields, cfg.ignoreFields, cfg.decolorizeFields, cfg.extraFields)
 
 			remoteAddr := c.RemoteAddr()
 			remoteIP := getRemoteIP(remoteAddr, cfg.useRemoteIP)
@@ -423,13 +427,13 @@ func processStream(protocol string, r io.Reader, compressMethod string, useLocal
 	}
 
 	lmp := cp.NewLogMessageProcessor("syslog_"+protocol, true)
-	err := processStreamInternal(r, compressMethod, useLocalTimestamp, remoteIP, lmp)
+	err := processStreamInternal(r, compressMethod, useLocalTimestamp, remoteIP, cp.MsgFields, lmp)
 	lmp.MustClose()
 
 	return err
 }
 
-func processStreamInternal(r io.Reader, compressMethod string, useLocalTimestamp bool, remoteIP string, lmp insertutil.LogMessageProcessor) error {
+func processStreamInternal(r io.Reader, compressMethod string, useLocalTimestamp bool, remoteIP string, msgFields []string, lmp insertutil.LogMessageProcessor) error {
 	wcr, err := writeconcurrencylimiter.GetReader(r)
 	if err != nil {
 		return err
@@ -442,10 +446,10 @@ func processStreamInternal(r io.Reader, compressMethod string, useLocalTimestamp
 	}
 	defer protoparserutil.PutUncompressedReader(reader)
 
-	return processUncompressedStream(reader, useLocalTimestamp, remoteIP, lmp)
+	return processUncompressedStream(reader, useLocalTimestamp, remoteIP, msgFields, lmp)
 }
 
-func processUncompressedStream(r io.Reader, useLocalTimestamp bool, remoteIP string, lmp insertutil.LogMessageProcessor) error {
+func processUncompressedStream(r io.Reader, useLocalTimestamp bool, remoteIP string, msgFields []string, lmp insertutil.LogMessageProcessor) error {
 	slr := getSyslogLineReader(r)
 	defer putSyslogLineReader(slr)
 
@@ -457,7 +461,7 @@ func processUncompressedStream(r io.Reader, useLocalTimestamp bool, remoteIP str
 		}
 
 		currentYear := int(globalCurrentYear.Load())
-		err := processLine(slr.line, currentYear, globalTimezone, useLocalTimestamp, remoteIP, lmp)
+		err := processLine(slr.line, currentYear, globalTimezone, useLocalTimestamp, remoteIP, msgFields, lmp)
 		if err != nil {
 			errorsTotal.Inc()
 			return fmt.Errorf("cannot read line #%d: %w", n, err)
@@ -578,7 +582,7 @@ func putSyslogLineReader(slr *syslogLineReader) {
 
 var syslogLineReaderPool sync.Pool
 
-func processLine(line []byte, currentYear int, timezone *time.Location, useLocalTimestamp bool, remoteIP string, lmp insertutil.LogMessageProcessor) error {
+func processLine(line []byte, currentYear int, timezone *time.Location, useLocalTimestamp bool, remoteIP string, msgFields []string, lmp insertutil.LogMessageProcessor) error {
 	p := logstorage.GetSyslogParser(currentYear, timezone)
 	defer logstorage.PutSyslogParser(p)
 
@@ -617,7 +621,6 @@ func processLine(line []byte, currentYear int, timezone *time.Location, useLocal
 }
 
 var timeFields = []string{"timestamp"}
-var msgFields = []string{"message"}
 
 var (
 	errorsTotal = metrics.NewCounter(`vl_errors_total{type="syslog"}`)
@@ -673,6 +676,7 @@ func parseExtraFields(s string) ([]logstorage.Field, error) {
 type configs struct {
 	typ string
 
+	msgFields         []string
 	streamFields      []string
 	ignoreFields      []string
 	decolorizeFields  []string
@@ -683,9 +687,15 @@ type configs struct {
 	useRemoteIP       bool
 }
 
-func getConfigs(typ string, argIdx int, streamFieldsArg, ignoreFieldsArg, decolorizeFieldsArg, extraFieldsArg, tenantIDArg, compressMethodArg *flagutil.ArrayString,
+func getConfigs(typ string, argIdx int, msgFieldArg, streamFieldsArg, ignoreFieldsArg, decolorizeFieldsArg, extraFieldsArg, tenantIDArg, compressMethodArg *flagutil.ArrayString,
 	useLocalTimestampArg, useRemoteIPArg *flagutil.ArrayBool,
 ) (*configs, error) {
+	msgFieldStr := msgFieldArg.GetOptionalArg(argIdx)
+	msgFields, err := parseFieldsList(msgFieldStr)
+	if err != nil {
+		return nil, fmt.Errorf("cannot parse -syslog.msgField.%s=%q: %w", typ, msgFieldStr, err)
+	}
+
 	streamFieldsStr := streamFieldsArg.GetOptionalArg(argIdx)
 	streamFields, err := parseFieldsList(streamFieldsStr)
 	if err != nil {
@@ -732,6 +742,7 @@ func getConfigs(typ string, argIdx int, streamFieldsArg, ignoreFieldsArg, decolo
 
 	return &configs{
 		typ:               typ,
+		msgFields:         msgFields,
 		streamFields:      streamFields,
 		ignoreFields:      ignoreFields,
 		decolorizeFields:  decolorizeFields,

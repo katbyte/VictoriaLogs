@@ -141,7 +141,12 @@ func removeEmptyTokens(a []string) []string {
 }
 
 // GetCommonParamsForSyslog returns common params needed for parsing syslog messages and storing them to the given tenantID.
-func GetCommonParamsForSyslog(tenantID logstorage.TenantID, streamFields, ignoreFields, decolorizeFields []string, extraFields []logstorage.Field) *CommonParams {
+func GetCommonParamsForSyslog(tenantID logstorage.TenantID, msgFields, streamFields, ignoreFields, decolorizeFields []string, extraFields []logstorage.Field) *CommonParams {
+	if len(msgFields) == 0 {
+		msgFields = []string{
+			"message",
+		}
+	}
 	// See https://docs.victoriametrics.com/victorialogs/logsql/#unpack_syslog-pipe
 	if streamFields == nil {
 		streamFields = []string{
@@ -158,9 +163,7 @@ func GetCommonParamsForSyslog(tenantID logstorage.TenantID, streamFields, ignore
 		TimeFields: []string{
 			"timestamp",
 		},
-		MsgFields: []string{
-			"message",
-		},
+		MsgFields:        msgFields,
 		StreamFields:     streamFields,
 		IgnoreFields:     ignoreFields,
 		DecolorizeFields: decolorizeFields,
